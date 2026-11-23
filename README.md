@@ -46,7 +46,7 @@ await simulateFailureWithRetry()
 
 Here Gemini can request up to three more calls, choosing the delay in seconds each time. The example ends with the simulated error when the model declines or the retries run out. A successful call returns immediately without contacting the model.
 
-Once the first npm release is available, install VibeRetry with the SDK for your provider.
+Install VibeRetry with the SDK for your provider.
 
 ```sh
 # Google Gemini
