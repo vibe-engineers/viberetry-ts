@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tgz
+.env
+.env.*
+!.env.template
+.venv/
+__pycache__/
+*.tsbuildinfo
+.DS_Store

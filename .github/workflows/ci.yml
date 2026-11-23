@@ -1,0 +1,93 @@
+name: VibeRetry CI
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ["22.13.0", 24, 26]
+    defaults:
+      run:
+        working-directory: viberetry-ts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: viberetry-ts
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: viberetry-ts/package-lock.json
+      - name: Check availability of the locked VibeTools version
+        id: core
+        run: |
+          version=$(node -p "require('./package-lock.json').packages['node_modules/@vibe-engineers/vibetools'].version")
+          status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://registry.npmjs.org/@vibe-engineers%2Fvibetools/$version")
+          case "$status:$version" in
+            200:*) echo "available=true" >> "$GITHUB_OUTPUT" ;;
+            404:0.1.0) echo "available=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "npm returned HTTP $status for VibeTools $version" >&2; exit 1 ;;
+          esac
+      - if: steps.core.outputs.available == 'false'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: vibe-engineers/vibetools-ts
+          path: vibetools-ts
+          persist-credentials: false
+      - if: steps.core.outputs.available == 'false'
+        working-directory: vibetools-ts
+        run: |
+          npm ci
+          npm pack --pack-destination "$RUNNER_TEMP"
+      - name: Install the verified prerelease VibeTools archive
+        if: steps.core.outputs.available == 'false'
+        env:
+          CORE_TAR_SHA256: 4b0690c0c407303b8ae906887fb99542eafb689abf1470717483811fa3dbb2e3
+        run: |
+          archive="$RUNNER_TEMP/vibe-engineers-vibetools-0.1.0.tgz"
+          # Node builds can produce different gzip bytes for the same npm archive.
+          gzip -dc "$archive" > "$RUNNER_TEMP/vibetools.tar"
+          echo "$CORE_TAR_SHA256  $RUNNER_TEMP/vibetools.tar" | sha256sum -c -
+          npm install --no-save "$archive"
+      - if: steps.core.outputs.available == 'true'
+        run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - if: matrix.node != '22.13.0'
+        run: npm pack --dry-run
+      - name: Test the installed npm archive
+        if: matrix.node == '22.13.0'
+        run: |
+          consumer=$(mktemp -d)
+          archive=$(npm pack --silent --pack-destination "$consumer")
+          core=$(npm pack ./node_modules/@vibe-engineers/vibetools --ignore-scripts --silent --pack-destination "$consumer")
+          openai=$(node -p "require('./package.json').devDependencies.openai")
+          gemini=$(node -p "require('./package.json').devDependencies['@google/genai']")
+          npm install --prefix "$consumer" --no-audit --no-fund "$consumer/$archive" "$consumer/$core" "openai@$openai" "@google/genai@$gemini"
+          cp tests/transport.test.mjs "$consumer/"
+          node --test "$consumer/transport.test.mjs"
+          # Consumer declarations must also resolve without the optional TypeSafe SDK.
+          mkdir "$consumer/empty-types"
+          printf '%s\n' 'import { VibeRetry } from "@vibe-engineers/viberetry"' 'export const factory = VibeRetry' > "$consumer/consumer.mts"
+          node_modules/.bin/tsc --declaration --emitDeclarationOnly --strict --module NodeNext --target ES2022 --lib ES2022 --typeRoots "$consumer/empty-types" "$consumer/consumer.mts"
+          jev_consumer=$(mktemp -d)
+          jev=$(node -p "require('./package.json').devDependencies['@typesafe-ai/sdk']")
+          npm install --prefix "$jev_consumer" --no-audit --no-fund "$consumer/$archive" "$consumer/$core" "@typesafe-ai/sdk@$jev"
+          cp tests/jev.test.mjs "$jev_consumer/"
+          node --test "$jev_consumer/jev.test.mjs"
+      - if: matrix.node == '22.13.0'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - if: matrix.node == '22.13.0'
+        name: Compare with Python
+        run: |
+          python -m pip install -r tests/parity/requirements.txt
+          npm run test:parity

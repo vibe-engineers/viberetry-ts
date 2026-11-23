@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "emitDeclarationOnly": true,
+    "outDir": "./node_modules/.cache/declarations",
+    "skipLibCheck": false
+  },
+  "include": ["tests/*.types.mts"]
+}
