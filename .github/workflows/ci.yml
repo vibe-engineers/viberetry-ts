@@ -60,7 +60,7 @@ jobs:
       - name: Install the verified prerelease VibeTools archive
         if: steps.core.outputs.available == 'false'
         env:
-          CORE_TAR_SHA256: 65f05116330348585e2c2606569b539260dd6f17fc1f38c021df539357e0d9d1
+          CORE_TAR_SHA256: 4e3bdc578d54281eb1f6041c2af29d3943d7f2de1a3c2bf69774e73a96666f0c
         run: |
           archive="$RUNNER_TEMP/vibe-engineers-vibetools-0.1.0.tgz"
           # Node builds can produce different gzip bytes for the same npm archive.

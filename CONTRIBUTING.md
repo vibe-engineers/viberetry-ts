@@ -8,7 +8,7 @@ VibeRetry follows a forking workflow. Branch from `main` in your fork, make the 
 
 Maintainers can preview a release from **Actions → Publish to npm → Run workflow**. The workflow tests the package across supported Node.js versions and checks the exact npm archive installed by the tests.
 
-For a release, update the version in the manifest and lockfile, update the changelog, then push a matching Git tag (for example, `v0.1.0`) on a commit from `main`. GitHub Actions uses npm trusted publishing to stage the archive with provenance. Review its version, GitHub Actions run, and SHA-512 integrity in npm’s staging queue, then approve it with two-factor authentication. Stable releases use `latest` and prereleases use `next`. [Publish workflow](https://github.com/vibe-engineers/viberetry-ts/actions/workflows/publish.yml) · [npm staged publishing](https://docs.npmjs.com/staged-publishing/)
+For a release, update the version in the manifest and lockfile, update the changelog, then push a matching Git tag (for example, `v0.1.0`) on a commit from `main`. GitHub Actions uses npm trusted publishing to publish the tested archive automatically with signed provenance. The workflow checks its public npm integrity and provenance after publishing. Stable releases use `latest` and prereleases use `next`. [Publish workflow](https://github.com/vibe-engineers/viberetry-ts/actions/workflows/publish.yml) · [npm provenance](https://docs.npmjs.com/viewing-package-provenance/)
 
 The tagged workflow requires the locked VibeTools version to be available on npm. Publish VibeTools first and verify its registry integrity matches this repository’s lockfile.
 
