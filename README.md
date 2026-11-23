@@ -15,6 +15,7 @@
 
 - [Introduction](#introduction)
 - [Using Jev](#using-jev)
+- [Using WebLLM in a browser](#using-webllm-in-a-browser)
 - [Features](#features)
 - [Technologies](#technologies)
 - [Team](#team)
@@ -23,7 +24,7 @@
 
 ### Introduction
 
-**VibeRetry** asks a model whether to retry a failed function call. Pass an OpenAI, Google Gemini, or TypeSafe client and a model name, wrap your function, and `await` the result. This example wraps a function that always throws. Set `GEMINI_API_KEY` to run it.
+**VibeRetry** asks a model whether to retry a failed function call. Pass an OpenAI, Google Gemini, or TypeSafe client, or an initialized WebLLM engine, along with the model name. Wrap your function and `await` the result. This example wraps a function that always throws. Set `GEMINI_API_KEY` to run it.
 
 ```ts
 import { GoogleGenAI } from "@google/genai"
@@ -84,10 +85,42 @@ console.log(await readReport())
 
 If the read fails, Jev judges whether another attempt makes sense using the failure, your remarks, and earlier retries. By default, VibeRetry approves a retry at a probability of `0.7` or higher. The example raises `probability_threshold` to `0.8` for this operation. Approved retries wait 1, 2, 4, 8, 16, then 30 seconds each. [Retry decisions](docs/DeveloperGuide.md#retry-decisions)
 
+### Using WebLLM in a browser
+
+VibeRetry 0.1.1 can ask a local model for the retry decision and delay. Install WebLLM in your browser app alongside VibeRetry.
+
+```sh
+npm install "@vibe-engineers/viberetry@^0.1.1" "@mlc-ai/web-llm@^0.2.89"
+```
+
+Run the app over HTTPS or localhost in a browser with WebGPU. WebLLM downloads the model on first use. Initialize the engine once and pass its loaded model ID. You can also pass the engine returned by `CreateWebWorkerMLCEngine`. [WebLLM](https://github.com/mlc-ai/web-llm)
+
+```ts
+import { CreateMLCEngine } from "@mlc-ai/web-llm"
+import { VibeRetry } from "@vibe-engineers/viberetry"
+
+const model = "Llama-3.2-1B-Instruct-q4f16_1-MLC"
+const engine = await CreateMLCEngine(model, undefined, { temperature: 0 })
+const retry = VibeRetry(engine, model, { timeout: 30_000 })
+
+let calls = 0
+const readStatus = retry(
+  () => {
+    if (++calls === 1) throw new Error("HTTP 503 Service Unavailable")
+    return "ready"
+  },
+  { max_retries: 1, remarks: "Retry HTTP 503 once. Set delay to the integer 0 seconds." },
+)
+
+console.log(await readStatus())
+```
+
+If the model approves a retry, the second call returns `"ready"`. If it declines, the wrapper throws the original error. The example uses a sampling temperature of zero for repeatability. Test both the decision and the proposed delay on recoverable and permanent failures from your application. [Retry decisions](docs/DeveloperGuide.md#retry-decisions)
+
 ### Features
 
 - **Retry guidance.** Use `remarks` to tell the model when another attempt makes sense.
-- **Multi-provider support.** Use the same wrapper with OpenAI, Google Gemini, or Jev.
+- **Multi-provider support.** Use the same wrapper with OpenAI, Google Gemini, Jev, or a local WebLLM engine.
 - **Extensible design.** VibeTools supplies the provider adapters. VibeRetry supplies the retry loop, decision schema, and default instruction.
 - **Custom exceptions.** Handle the original function error or an error evaluating the model's decision. [Error handling](docs/DeveloperGuide.md#error-handling)
 
@@ -98,7 +131,7 @@ If the read fails, Jev judges whether another attempt makes sense using the fail
 <p align="center">
   <img height="150" width="150" src="https://www.typescriptlang.org/branding/ts-logo-128.svg" alt="TypeScript logo" />
 </p>
-<p align="center">TypeScript on Node.js 22.13 or later</p>
+<p align="center">TypeScript on Node.js 22.13 or later and in WebGPU-capable browsers</p>
 
 ##### Project Repository
 

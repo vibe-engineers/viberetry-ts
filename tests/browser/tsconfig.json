@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "customConditions": ["browser"],
+    "rootDir": ".",
+    "types": [],
+    "skipLibCheck": false,
+    "noEmit": true
+  },
+  "include": ["usage.mts", "conditions.mts"]
+}

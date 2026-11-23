@@ -1,8 +1,16 @@
 import type { GoogleGenAI } from "@google/genai"
 import type { TypeSafeClient } from "@typesafe-ai/sdk"
-import { type RetryOptions, VibeRetry } from "@vibe-engineers/viberetry"
+import { type RetryOptions, VibeRetry, type VibeRetryDecorator } from "@vibe-engineers/viberetry"
 import { VibeRetryConfig } from "@vibe-engineers/viberetry/config/config"
 import { RetryResult } from "@vibe-engineers/viberetry/models/models"
+import type {
+  DecisionClientResult,
+  JevClient,
+  JevEvaluator,
+  SharedClient,
+  VibeLlmClient,
+} from "@vibe-engineers/vibetools/_internal"
+import type { WebLlmEngine } from "@vibe-engineers/vibetools/llms/webllm_wrapper"
 import type OpenAI from "openai"
 
 declare const openai: OpenAI
@@ -11,6 +19,11 @@ declare const jev: TypeSafeClient
 declare function expectType<T>(value: T): void
 
 export const retry = VibeRetry(openai, "model")
+export function genericRetry<C extends JevClient | SharedClient>(
+  client: C,
+): VibeRetryDecorator<DecisionClientResult<C, JevEvaluator, VibeLlmClient>> {
+  return VibeRetry(client, "model")
+}
 retry.llm = VibeRetry(gemini, "model", { vibe_mode: "eager" }).llm
 VibeRetry(openai, "model", new VibeRetryConfig())
 VibeRetry(openai, "model", null)
@@ -19,6 +32,19 @@ declare const fromExistingWrapper: ReturnType<typeof VibeRetry>
 expectType<Promise<RetryResult>>(fromExistingWrapper.llm.vibe_eval("decision", RetryResult))
 declare const mixed: TypeSafeClient | OpenAI
 expectType<Promise<number>>(VibeRetry(mixed, "model")(() => 4)())
+declare const localOrJev: WebLlmEngine | TypeSafeClient
+const mixedRetry = VibeRetry(localOrJev, "model")
+expectType<Promise<number>>(mixedRetry(() => 4)())
+// @ts-expect-error A numeric cutoff needs a known Jev client.
+mixedRetry({ probability_threshold: 0.5 })
+if ("getGPUVendor" in localOrJev) {
+  expectType<Promise<string>>(VibeRetry(localOrJev, "model").llm.client.getGPUVendor())
+} else {
+  VibeRetry(localOrJev, "model")({ probability_threshold: 0.5 })
+}
+declare const extendedOpenAI: OpenAI & WebLlmEngine
+// A hosted SDK can also expose the structural local-engine interface.
+expectType<typeof retry.llm>(VibeRetry(extendedOpenAI, "model").llm)
 declare const untypedClient: ReturnType<typeof JSON.parse>
 expectType<Promise<RetryResult>>(
   VibeRetry(untypedClient, "model").llm.vibe_eval("decision", RetryResult),

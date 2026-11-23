@@ -1,5 +1,8 @@
-import { VibeConfig, type VibeConfigOptions } from "@vibe-engineers/vibetools/_internal"
-import { isPlainObject } from "@vibe-engineers/vibetools/_internal/vibe_config"
+import {
+  isPlainObject,
+  VibeConfig,
+  type VibeConfigOptions,
+} from "@vibe-engineers/vibetools/_internal/vibe_config"
 
 export const defaultRetryInstruction =
   "You are a function. Return ONLY a valid JSON STRING, with no code fences, " +

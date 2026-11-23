@@ -1,6 +1,6 @@
 {
   "name": "@vibe-engineers/viberetry",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "When at first you don’t succeed, vibe, vibe again.",
   "license": "MIT",
   "publishConfig": {
@@ -18,8 +18,16 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./viberetry": "./dist/viberetry.js",
+    ".": {
+      "browser": "./dist/browser.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./viberetry": {
+      "browser": "./dist/browser.js",
+      "types": "./dist/viberetry.d.ts",
+      "default": "./dist/viberetry.js"
+    },
     "./config/config": "./dist/config/config.js",
     "./models/models": "./dist/models/models.js",
     "./utils/logger": "./dist/utils/logger.js"
@@ -42,18 +50,19 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && tsc -p tsconfig.tests.json && node --test tests/*.test.mjs",
+    "test": "npm run build && tsc -p tsconfig.tests.json && tsc -p tests/browser/tsconfig.json && node --test tests/*.test.mjs",
     "lint": "biome lint --config-path=./biome.json .",
     "format": "biome format --config-path=./biome.json --write .",
     "prepack": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && npm run build",
     "test:parity": "npm run build && node --test tests/parity/python-parity.test.mjs"
   },
   "dependencies": {
-    "@vibe-engineers/vibetools": "^0.1.0"
+    "@vibe-engineers/vibetools": "^0.1.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
     "@google/genai": "3.6.1",
+    "@mlc-ai/web-llm": "0.2.89",
     "@types/node": "22.20.5",
     "@typesafe-ai/sdk": "0.7.0",
     "openai": "7.62.0",

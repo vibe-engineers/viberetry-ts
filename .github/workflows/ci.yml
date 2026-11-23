@@ -38,7 +38,7 @@ jobs:
           status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://registry.npmjs.org/@vibe-engineers%2Fvibetools/$version")
           case "$status:$version" in
             200:*) echo "available=true" >> "$GITHUB_OUTPUT" ;;
-            404:0.1.0) echo "available=false" >> "$GITHUB_OUTPUT" ;;
+            404:0.1.1) echo "available=false" >> "$GITHUB_OUTPUT" ;;
             *) echo "npm returned HTTP $status for VibeTools $version" >&2; exit 1 ;;
           esac
       - name: Require the published VibeTools dependency for a release tag
@@ -60,9 +60,9 @@ jobs:
       - name: Install the verified prerelease VibeTools archive
         if: steps.core.outputs.available == 'false'
         env:
-          CORE_TAR_SHA256: 4e3bdc578d54281eb1f6041c2af29d3943d7f2de1a3c2bf69774e73a96666f0c
+          CORE_TAR_SHA256: 2c2213d6782b90b9ae54b9256add3ac85301e39be282da11f794ba185e058d3a
         run: |
-          archive="$RUNNER_TEMP/vibe-engineers-vibetools-0.1.0.tgz"
+          archive="$RUNNER_TEMP/vibe-engineers-vibetools-0.1.1.tgz"
           # Node builds can produce different gzip bytes for the same npm archive.
           gzip -dc "$archive" > "$RUNNER_TEMP/vibetools.tar"
           echo "$CORE_TAR_SHA256  $RUNNER_TEMP/vibetools.tar" | sha256sum -c -
@@ -95,6 +95,14 @@ jobs:
           npm install --prefix "$jev_consumer" --no-audit --no-fund "$consumer/$archive" "$consumer/$core" "@typesafe-ai/sdk@$jev"
           cp tests/jev.test.mjs "$jev_consumer/"
           node --test "$jev_consumer/jev.test.mjs"
+          browser_consumer=$(mktemp -d)
+          webllm=$(node -p "require('./package.json').devDependencies['@mlc-ai/web-llm']")
+          npm install --prefix "$browser_consumer" --no-audit --no-fund "$consumer/$archive" "$consumer/$core" "@mlc-ai/web-llm@$webllm"
+          cp tests/webllm.test.mjs tests/browser/*.mts "$browser_consumer/"
+          node --test "$browser_consumer/webllm.test.mjs"
+          node --conditions=browser --test "$browser_consumer/webllm.test.mjs"
+          node_modules/.bin/tsc --strict --noEmit --module ESNext --moduleResolution Bundler --target ES2022 "$browser_consumer/usage.mts"
+          node_modules/.bin/tsc --strict --noEmit --module ESNext --moduleResolution Bundler --customConditions browser --target ES2022 "$browser_consumer/usage.mts" "$browser_consumer/conditions.mts"
       - if: matrix.node == '22.13.0'
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Added WebLLM retry decisions for application-owned main-thread and worker engines through the existing package root and `./viberetry` entry points. Both use the shared retry loop, decision validation, and delays in seconds.
+- Added local examples of a permanent and a transient failure to the default WebLLM retry instruction, plus constrained JSON generation for the retry decision.
+
 ## 0.1.0
 
 - Added optional Jev retry judgments with a per-operation `probability_threshold` (default `>= 0.7`) and exponential waits capped at 30 seconds.

@@ -17,7 +17,7 @@
 
 ## Introduction
 
-VibeRetry wraps a function and consults OpenAI, Gemini, or Jev when it fails. VibeRetry handles the application function, delay, and retry history. Its only required runtime dependency, `@vibe-engineers/vibetools`, handles SDK selection, response parsing, timeouts, and logging. Install the SDK for the provider you use. [VibeRetry README](../README.md) · [Package manifest](../package.json)
+VibeRetry wraps a function and consults OpenAI, Gemini, Jev, or a local WebLLM engine when it fails. VibeRetry handles the application function, delay, and retry history. Its only required runtime dependency, `@vibe-engineers/vibetools`, handles SDK selection, response parsing, timeouts, and logging. Install the SDK for the provider you use. [VibeRetry README](../README.md) · [Package manifest](../package.json)
 
 ## Navigating this Developer Guide
 
@@ -32,16 +32,16 @@ npm ci
 npm test
 ```
 
-Before the first VibeTools release, clone `vibe-engineers/vibetools-ts` alongside this repository and install its local tarball. These commands build the dependency and install it together with the VibeRetry development tools. [VibeTools repository](https://github.com/vibe-engineers/vibetools-ts)
+When working against an unpublished VibeTools change, clone `vibe-engineers/vibetools-ts` alongside this repository and install its local tarball. These commands build the dependency and install it together with the VibeRetry development tools. [VibeTools repository](https://github.com/vibe-engineers/vibetools-ts)
 
 ```sh
 npm ci --prefix ../vibetools-ts
 (cd ../vibetools-ts && npm pack)
-npm install --no-save ../vibetools-ts/vibe-engineers-vibetools-0.1.0.tgz
+npm install --no-save ../vibetools-ts/vibe-engineers-vibetools-0.1.1.tgz
 npm test
 ```
 
-For the first release, publish VibeTools before VibeRetry. The VibeRetry lockfile records the checksum of the candidate VibeTools archive. If the published archive differs, refresh its lockfile entry. Verify `npm ci`, `npm test`, and `npm run test:parity` against the published dependency before releasing VibeRetry.
+Publish the required VibeTools version before VibeRetry. Compare its npm `dist.integrity` with the VibeTools entry in `package-lock.json`. If the values differ, verify that the published archive's uncompressed tar matches `CORE_TAR_SHA256` in `.github/workflows/ci.yml` before recording the published integrity. Run `npm ci`, `npm test`, and `npm run test:parity` against the published dependency before releasing VibeRetry.
 
 ### Live examples
 
@@ -60,15 +60,19 @@ With both repositories set up as above, install their archives and your provider
 (cd ../vibetools-ts && npm pack)
 npm pack
 npm install --prefix /path/to/your-app \
-  "$PWD/../vibetools-ts/vibe-engineers-vibetools-0.1.0.tgz" \
-  "$PWD/vibe-engineers-viberetry-0.1.0.tgz" \
+  "$PWD/../vibetools-ts/vibe-engineers-vibetools-0.1.1.tgz" \
+  "$PWD/vibe-engineers-viberetry-0.1.1.tgz" \
   "openai@^7.62.0"
 ```
+
+For a browser app, install `@mlc-ai/web-llm@^0.2.89` with the two archives. Browser bundlers select the `browser` condition for both `@vibe-engineers/viberetry` and `@vibe-engineers/viberetry/viberetry`. To have TypeScript select the browser declarations as well, use `moduleResolution: "Bundler"` and `customConditions: ["browser"]`. Your app owns the model download, progress reporting, and engine lifetime. Reuse its main-thread or worker engine across wrapped operations. [Browser example](../README.md#using-webllm-in-a-browser)
 
 ## Project Structure
 
 - _src/index.ts_ exports the public `VibeRetry` factory.
-- _src/viberetry.ts_ wraps calls, captures failures, and applies each model decision.
+- _src/viberetry.ts_ selects the evaluator for Node callers. _src/browser.ts_ accepts a WebLLM engine.
+- _src/retry.ts_ wraps calls, captures failures, and applies each model decision in both environments.
+- _src/webllm.ts_ defines the grammar and examples for local retry decisions.
 - _src/config/config.ts_ defines `VibeRetryConfig` and the default system instruction.
 - _src/models/models.ts_ defines and validates the structured `RetryResult`.
 - _src/utils/logger.ts_ configures the `VibeRetry` console logger.
@@ -82,7 +86,7 @@ npm install --prefix /path/to/your-app \
 
 `VibeRetry(client, model, config?)` accepts model evaluation settings in its optional third argument. It returns a callable linked to the evaluator through its `llm` property. Apply it to an ordinary function with `retry(fn)` or `retry()(fn)`. Use `retry(options)(fn)` or `retry(fn, options)` to set `max_retries`, `remarks`, or a Jev `probability_threshold` for that operation.
 
-Library authors can export an initialized retry instance or a configured decorator and let TypeScript infer its provider type. For explicit annotations, `@vibe-engineers/viberetry` exports `VibeRetryDecorator`, `RetryOptions`, and `RetryWrapper`. The default evaluator type for `VibeRetryDecorator` covers OpenAI and Gemini.
+Library authors can export an initialized retry instance or a configured decorator and let TypeScript infer its provider type. For explicit annotations, `@vibe-engineers/viberetry` exports `VibeRetryDecorator`, `RetryOptions`, and `RetryWrapper`. The default evaluator type for `VibeRetryDecorator` covers OpenAI and Gemini in Node and the local WebLLM adapter in a browser build.
 
 The wrapped function always returns a promise. Use `await` for both synchronous and asynchronous functions. A synchronous exception or a rejected promise starts the same decision process. Each retry uses the same arguments and receiver as the original call. Separate invocations each start with empty history.
 
@@ -111,14 +115,16 @@ const status = await service.getOrder(7)
 | Wrapper option | Default | Behavior                                                                                                                                                                       |
 | -------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `max_retries`  | `1`     | Maximum number of additional calls. Three permits up to four total calls. Zero or a negative integer makes one call with no model consultation. Use a JavaScript safe integer. |
-| `remarks`      | `""`    | Guidance for the retry decision. OpenAI and Gemini can also use it to choose a delay. |
+| `remarks`      | `""`    | Guidance for the retry decision. OpenAI, Gemini, and WebLLM can also use it to choose a delay. |
 | `probability_threshold` | `0.7` for Jev | A finite number from `0` through `1`. Jev approves another attempt when the estimate meets or exceeds this value. |
 
-On failure with retries remaining, VibeRetry sends the function name, a text representation of its positional arguments, the exception type and message, the tail of the available stack trace (up to 4,000 characters), your remarks, and the history of previously approved attempts and their delays. The `args` field uses Node's `util.inspect` representation. Method calls forward `this` separately, so only explicitly passed arguments appear in `args`. The Python-compatible `kwargs` field contains `"{}"` because JavaScript passes arguments by position. An options object passed to your function remains an ordinary positional argument. Choose which arguments and error details to expose to the provider, and wrap operations that can safely be repeated.
+On failure with retries remaining, VibeRetry sends the function name, a text representation of its positional arguments, the exception type and message, the tail of the available stack trace (up to 4,000 characters), your remarks, and the history of previously approved attempts and their delays. The `args` field uses `util.inspect` in Node. Browser builds quote strings with JSON syntax, preserve bigint values, and label getters and circular references. Method calls forward `this` separately, so only explicitly passed arguments appear in `args`. The Python-compatible `kwargs` field contains `"{}"` because JavaScript passes arguments by position. An options object passed to your function remains an ordinary positional argument. Choose which arguments and error details to expose to the provider, and wrap operations that can safely be repeated.
 
-OpenAI and Gemini use the default system instruction requesting JSON such as `{"should_retry": true, "delay": 2}`. Both fields are required. `should_retry` must be a boolean. A positive integer `delay` waits that many **seconds** without blocking Node's event loop. A zero or negative delay retries immediately. As in Python, boolean delays correspond to `1` and `0`, and extra fields are discarded. Use an integer literal such as `1` for compatibility with Python. JavaScript also accepts `1.0` because it decodes to a safe integer, and rejects values outside the safe-integer range.
+OpenAI, Gemini, and WebLLM use the default system instruction requesting JSON such as `{"should_retry": true, "delay": 2}`. Both fields are required. `should_retry` must be a boolean. A positive integer `delay` waits that many **seconds** without blocking the event loop. A zero or negative delay retries immediately. The `timeout` covers evaluation only, and VibeRetry honors the full model-selected delay even if it lasts hours. As in Python, boolean delays correspond to `1` and `0`, and extra fields are discarded. Use an integer literal such as `1` for compatibility with Python. JavaScript also accepts `1.0` because it decodes to a safe integer, and rejects values outside the safe-integer range.
 
-Jev receives the failure as structured data and estimates whether another attempt is warranted. Omitting `probability_threshold` or passing `null` or `undefined` uses `0.7`. For example, `retry(fn, { probability_threshold: 0.8 })` approves a score of exactly `0.8`. At `0`, every valid Jev verdict approves a retry while retries remain. OpenAI and Gemini reject a numeric threshold because they supply a retry decision directly. The Jev delay doubles from one second to a cap of 30 seconds. The sixth and all subsequent approved retries wait 30 seconds each.
+WebLLM constrains generated retry decisions to an object with a boolean `should_retry` and an integer `delay`. The default local prompt includes one example of a permanent failure and one of a transient failure. Supplying a custom system instruction or `null` omits those examples. Each decision uses the current failure and its own invocation's history. The adapter validates the reply and rejects incomplete generation even when its visible text looks like a complete decision.
+
+Jev receives the failure as structured data and estimates whether another attempt is warranted. Omitting `probability_threshold` or passing `null` or `undefined` uses `0.7`. For example, `retry(fn, { probability_threshold: 0.8 })` approves a score of exactly `0.8`. At `0`, every valid Jev verdict approves a retry while retries remain. OpenAI, Gemini, and WebLLM reject a numeric threshold because they supply a retry decision directly. The Jev delay doubles from one second to a cap of 30 seconds. The sixth and all subsequent approved retries wait 30 seconds each.
 
 To share one cutoff across functions, define `const retryRead = retry({ probability_threshold: 0.8 })` once and use `retryRead(fn)` with each function.
 
@@ -132,7 +138,7 @@ Pass a plain options object or a `VibeRetryConfig` instance as the third argumen
 
 | Option               | Default                                                    | What it controls                                                                                                                                                                                          |
 | -------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `system_instruction` | JSON instruction for OpenAI and Gemini | A custom instruction adds guidance to Jev's judgment. Pass `null` to clear the text instruction. |
+| `system_instruction` | JSON instruction for OpenAI, Gemini, and WebLLM | A custom instruction adds guidance to Jev's judgment. Pass `null` to clear the text instruction. |
 | `timeout`            | `10_000` | Milliseconds for one model decision, including VibeTools' attempts to obtain it. The application function and the wait before its next call run outside that deadline. |
 | `vibe_mode`          | `"chill"` | Case-insensitive. `CHILL` allows one attempt to obtain a model decision, `EAGER` two, and `AGGRESSIVE` three. VibeTools waits one second between attempts. |
 
@@ -162,7 +168,7 @@ Document public types with TypeScript signatures and use JSDoc for behavior a ty
 
 ## Testing
 
-Run `npm run lint` and `npm test`. The test command builds VibeRetry, checks the public TypeScript declarations, and runs the Node tests. Use `npm pack --dry-run` to inspect which files npm will ship.
+Run `npm run lint` and `npm test`. The test command builds VibeRetry, checks the public Node and browser declarations against the SDKs, and runs the offline tests. A browser-condition test loads the exported modules with Node built-ins and globals disabled. Use `npm pack --dry-run` to inspect which files npm will ship.
 
 To compare against Python, activate a Python environment and run the commands below. When using `VIBE_PYTHON` instead of activating the environment, install the requirements with that interpreter. The combined checkout uses the sibling Python sources when present.
 
